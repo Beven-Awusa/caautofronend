@@ -1,5 +1,5 @@
 export const isParentActive = (children, path) => {
-    if (!children && !path) {
+    if (!children && !path) { // jsut need new merge to main
         return false;
     }
     return children.some((item) =>
