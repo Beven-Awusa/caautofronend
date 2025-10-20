@@ -139,6 +139,20 @@ jobs:
             
             # Pull la nouvelle image
             sudo docker pull ${{ needs.build.outputs.image_name }}
+
+            # Mettre à jour la variable d'environnement de l'image frontend dans .env
+            if grep -q "FRONTEND_IMAGE=" .env; then
+                sed -i "s|FRONTEND_IMAGE=.*|FRONTEND_IMAGE=${{ needs.build.outputs.image_name }}|g" .env
+            else
+                echo "FRONTEND_IMAGE=${{ needs.build.outputs.image_name }}" >> .env
+            fi
+            
+            # Mettre à jour l'URL de l'API dans .env
+            if grep -q "NEXT_PUBLIC_API_BASE_URL=" .env; then
+                sed -i "s|NEXT_PUBLIC_API_BASE_URL=.*|NEXT_PUBLIC_API_BASE_URL=${{ needs.build.outputs.api_url }}|g" .env
+            else
+                echo "NEXT_PUBLIC_API_BASE_URL=${{ needs.build.outputs.api_url }}" >> .env
+            fi
             
             # Restart seulement le service frontend
             sudo docker compose up -d --no-deps --force-recreate frontend
