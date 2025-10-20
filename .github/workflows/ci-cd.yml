@@ -43,9 +43,9 @@ jobs:
           
           # Définir l'URL de l'API selon l'environnement
           if [ "$BRANCH_NAME" = "main" ]; then
-            API_URL="${{ secrets.API_BASE_URL_MAIN }}"
+            API_URL="http://api.caautoline.com/api/caauto"
           else
-            API_URL="${{ secrets.API_BASE_URL_DEV }}"
+            API_URL="http://api-dev.caautoline.com/api/caauto"
           fi
           
           echo "image_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
