@@ -122,9 +122,9 @@ jobs:
             cd ~/caauto/infra/${{ needs.build.outputs.branch_name }}
             
             # Créer le réseau s'il n'existe pas
-            if ! sudo docker network ls | grep -q 'caauto'; then
+            if ! sudo docker network ls | grep -q 'caauto-${{ needs.build.outputs.branch_name }}'; then
                 echo "Création du réseau caauto..."
-                sudo docker network create caauto
+                sudo docker network create caauto-${{ needs.build.outputs.branch_name }}
             fi
             
             # Login to GitHub Container Registry
