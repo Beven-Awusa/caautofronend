@@ -29,8 +29,8 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: 'voiture/package-lock.json'
+          cache: 'yarn'
+          cache-dependency-path: 'voiture/yarn.lock'
 
       - name: Prepare environment variables
         id: prep
