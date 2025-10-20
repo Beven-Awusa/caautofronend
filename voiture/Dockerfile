@@ -4,8 +4,8 @@ RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
-RUN npm ci
+COPY package.json yarn.lock ./
+RUN yarn install --frozen-lockfile
 
 # Stage 2: Builder
 FROM node:20-alpine AS builder
@@ -19,17 +19,19 @@ COPY . .
 ARG NEXT_PUBLIC_API_BASE_URL
 ARG NEXT_PUBLIC_APP_ENV
 
-# Créer le fichier .env
+# Créer le fichier .env.production
 RUN echo "NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}" > .env && \
     echo "NEXT_PUBLIC_APP_ENV=${NEXT_PUBLIC_APP_ENV}" >> .env
 
-
 # Build l'application
-RUN npm run build
+RUN yarn build
 
 # Stage 3: Runner
 FROM node:20-alpine AS runner
 WORKDIR /app
+
+#ENV NODE_ENV=production
+#ENV NEXT_TELEMETRY_DISABLED=1
 
 # Créer un utilisateur non-root
 RUN addgroup --system --gid 1001 nodejs
@@ -47,4 +49,4 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["npm", "run", "dev"]
+CMD ["node", "server.js"]
