@@ -1,0 +1,145 @@
+name: Next.js CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image_name: ${{ steps.prep.outputs.image_name }}
+      branch_name: ${{ steps.prep.outputs.branch_name }}
+      api_url: ${{ steps.prep.outputs.api_url }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Prepare environment variables
+        id: prep
+        run: |
+          # Convertir le repository en minuscules
+          BASE_NAME=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          # Image complète avec tag = nom de la branche
+          IMAGE_NAME="ghcr.io/${BASE_NAME}:${{ github.ref_name }}"
+          BRANCH_NAME="${{ github.ref_name }}"
+          
+          # Définir l'URL de l'API selon l'environnement
+          if [ "$BRANCH_NAME" = "main" ]; then
+            API_URL="${{ secrets.API_BASE_URL_MAIN }}"
+          else
+            API_URL="${{ secrets.API_BASE_URL_DEV }}"
+          fi
+          
+          echo "image_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
+          echo "branch_name=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+          echo "api_url=${API_URL}" >> $GITHUB_OUTPUT
+          
+          echo "Image complète: ${IMAGE_NAME}"
+          echo "Branche: ${BRANCH_NAME}"
+          echo "API URL: ${API_URL}"
+
+      - name: Create .env file
+        run: |
+          cat > .env << EOF
+          NEXT_PUBLIC_API_BASE_URL=${{ steps.prep.outputs.api_url }}
+          NEXT_PUBLIC_APP_ENV=${{ steps.prep.outputs.branch_name }}
+          EOF
+          echo "Fichier .env créé avec succès"
+          cat .env
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Linter
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Run Tests
+        run: npm run test --if-present
+        continue-on-error: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.prep.outputs.image_name }}
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=${{ steps.prep.outputs.api_url }}
+            NEXT_PUBLIC_APP_ENV=${{ steps.prep.outputs.branch_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Deploy Frontend Service on Server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.REMOTE_IP_ADDRESS }}
+          username: ${{ secrets.REMOTE_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 22
+          script: |
+            # Naviguer vers le bon dossier selon la branche
+            cd ~/caauto/infra/${{ needs.build.outputs.branch_name }}
+            
+            # Créer le réseau s'il n'existe pas
+            if ! sudo docker network ls | grep -q 'caauto'; then
+                echo "Création du réseau caauto..."
+                sudo docker network create caauto
+            fi
+            
+            # Login to GitHub Container Registry
+            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            
+            # Arrêter le frontend
+            sudo docker compose down frontend
+            
+            # Supprimer l'ancienne image
+            sudo docker rmi -f ${{ needs.build.outputs.image_name }}
+            
+            # Pull la nouvelle image
+            sudo docker pull ${{ needs.build.outputs.image_name }}
+            
+            # Restart seulement le service frontend
+            sudo docker compose up -d --no-deps --force-recreate frontend
+            
+            # Nettoyer les anciennes images
+            sudo docker image prune -f
+            
+            echo "Déploiement du frontend terminé avec succès!"
